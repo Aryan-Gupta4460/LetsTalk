@@ -1,15 +1,20 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
+	"time"
 
+	"github.com/Aryan-Gupta4460/letstalk/internal/models"
 	"github.com/gorilla/websocket"
 )
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan []byte
+	username string
+	room     string
 }
 
 func (c *Client) readPump() {
@@ -19,11 +24,22 @@ func (c *Client) readPump() {
 	}()
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, msgBytes, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		c.hub.broadcast <- message
+		var msg models.Message
+		err = json.Unmarshal(msgBytes, &msg)
+		if err != nil {
+			log.Println("Invalid message format")
+			continue
+		}
+
+		// Add server timestamp
+		msg.Username = c.username
+		msg.Room = c.room
+		msg.Timestamp = time.Now()
+		c.hub.broadcast <- msg
 	}
 }
 
