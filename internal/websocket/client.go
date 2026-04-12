@@ -28,17 +28,50 @@ func (c *Client) readPump() {
 		if err != nil {
 			break
 		}
-		var msg models.Message
-		err = json.Unmarshal(msgBytes, &msg)
-		if err != nil {
-			log.Println("Invalid message format")
+
+		// Detect message type
+		var raw map[string]any
+		if err := json.Unmarshal(msgBytes, &raw); err != nil {
+			c.hub.logger.Println("Invalid JSON")
+			continue
+		}
+		//  Handled load_more
+		if msgType, ok := raw["type"].(string); ok && msgType == "load_more" {
+			offset := 0
+			if val, ok := raw["offset"].(float64); ok {
+				offset = int(val)
+			}
+
+			messages := c.hub.getRecentMessages(c.room, 20, offset)
+			if len(messages) == 0 {
+				response := map[string]string{
+					"type": "no_more_messages",
+				}
+
+				respBytes, _ := json.Marshal(response)
+				c.send <- respBytes
+				continue
+			}
+
+			// send in correct order
+			for i := len(messages) - 1; i >= 0; i-- {
+				c.send <- messages[i]
+			}
 			continue
 		}
 
-		// Add server timestamp
+		//  Normal chat message
+		var msg models.Message
+		if err := json.Unmarshal(msgBytes, &msg); err != nil {
+			c.hub.logger.Println("Invalid message format")
+			continue
+		}
+
+		// enrich from server
 		msg.Username = c.username
 		msg.Room = c.room
 		msg.Timestamp = time.Now()
+
 		c.hub.broadcast <- msg
 	}
 }
