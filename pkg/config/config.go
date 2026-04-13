@@ -20,6 +20,11 @@ type Config struct {
 		DBName   string `yaml:"dbname"`
 		SSLMode  string `yaml:"sslmode"`
 	} `yaml:"database"`
+
+	Cache struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"cache"`
 }
 
 func LoadConfig(path string) *Config {

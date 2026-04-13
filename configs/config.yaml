@@ -8,3 +8,7 @@ database:
   password: postgres
   dbname: letstalk
   sslmode: disable
+
+cache:
+  host: localhost
+  port: 6379  

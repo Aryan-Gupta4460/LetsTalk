@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/Aryan-Gupta4460/letstalk/internal/cache"
 	"github.com/Aryan-Gupta4460/letstalk/internal/models"
+	"github.com/redis/go-redis/v9"
 )
 
 type Hub struct {
@@ -14,10 +16,11 @@ type Hub struct {
 	register   chan *Client
 	unregister chan *Client
 	db         *sql.DB
+	rdb        *redis.Client
 	logger     *log.Logger
 }
 
-func NewHub(db *sql.DB, logger *log.Logger) *Hub {
+func NewHub(db *sql.DB, rdb *redis.Client, logger *log.Logger) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan models.Message),
@@ -25,6 +28,7 @@ func NewHub(db *sql.DB, logger *log.Logger) *Hub {
 		unregister: make(chan *Client),
 		db:         db,
 		logger:     logger,
+		rdb:        rdb,
 	}
 }
 
@@ -34,6 +38,15 @@ func (h *Hub) Run() {
 
 		case client := <-h.register:
 			h.clients[client] = true
+
+			cachedMessages, err := cache.GetCachedMessages(h.rdb, client.room)
+
+			if err == nil && len(cachedMessages) > 0 {
+				for i := len(cachedMessages) - 1; i >= 0; i-- {
+					client.send <- cachedMessages[i]
+				}
+				return
+			}
 
 			// Load history from DB
 			messages := h.getRecentMessages(client.room, 20, 0)
@@ -58,6 +71,10 @@ func (h *Hub) Run() {
 			)
 			if err != nil {
 				h.logger.Println("DB insert error:", err)
+			}
+			cacheErr := cache.CacheMessage(h.rdb, message.Room, message)
+			if cacheErr != nil {
+				h.logger.Println("Redis cache error:", cacheErr)
 			}
 			//  Save to history
 			msgBytes, _ := json.Marshal(message)
